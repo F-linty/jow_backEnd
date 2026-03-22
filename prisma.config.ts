@@ -7,7 +7,7 @@ import { defineConfig } from 'prisma/config'
 
 const datasourceUrl =
   process.env.DATABASE_URL?.trim() ||
-  'mysql://railway_build:unused@127.0.0.1:3306/railway_build'
+  "mysql://root:TwVuUWFbaYvhdMTnEYDsWJnlLfmrXdcF@ballast.proxy.rlwy.net:57929/railway"
 
 export default defineConfig({
   schema: 'prisma/schema.prisma',
