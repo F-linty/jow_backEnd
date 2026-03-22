@@ -1,0 +1,353 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 在 generate 时需要 DATABASE_URL（即使你也在 PrismaService 里传 adapter）。
+// 你可以在生成时通过环境变量注入；也可以在 .env 里配置。
+datasource db {
+  provider = "mysql"
+}
+
+enum RecordStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum RoleStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum OrgStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum PurchasePlanStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  DISABLED
+}
+
+enum AggregateStatus {
+  INIT
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum PurchaseLineType {
+  MATERIAL
+  NON_MATERIAL
+}
+
+model Organization {
+  id        Int        @id @default(autoincrement())
+  name      String     @db.VarChar(255)
+  parentId  Int?
+  parent    Organization? @relation("OrgTree", fields: [parentId], references: [id])
+  children  Organization[] @relation("OrgTree")
+
+  status    OrgStatus  @default(ACTIVE)
+  sort      Int        @default(0)
+  /// 软删除：有值表示已从管理端移除，历史业务数据仍保留外键
+  deletedAt DateTime?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  users      User[]
+  plans      PurchasePlan[]
+  nonMaterialItems NonMaterialItem[]
+  aggregates       PurchaseAggregate[]
+  controlsFrom OrgControl[] @relation("OrgControlFrom")
+  controlsTo   OrgControl[] @relation("OrgControlTo")
+
+  @@index([parentId])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model OrgControl {
+  id             Int        @id @default(autoincrement())
+  fromOrgId      Int
+  toOrgId        Int
+  relationType   String     @db.VarChar(50)
+  status         RecordStatus @default(ACTIVE)
+  createdAt      DateTime   @default(now())
+
+  fromOrg Organization @relation("OrgControlFrom", fields: [fromOrgId], references: [id])
+  toOrg   Organization @relation("OrgControlTo", fields: [toOrgId], references: [id])
+
+  @@index([fromOrgId])
+  @@index([toOrgId])
+}
+
+model Role {
+  id        Int       @id @default(autoincrement())
+  name      String    @unique @db.VarChar(64)
+  status    RoleStatus @default(ACTIVE)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  userRoles UserRole[]
+}
+
+model User {
+  id        Int       @id @default(autoincrement())
+  account   String    @unique @db.VarChar(64)
+  passWord  String    @db.VarChar(255)
+
+  userName  String?   @db.VarChar(255)
+  avatar     String?  @db.VarChar(512)
+
+  status    UserStatus @default(ACTIVE)
+  orgId      Int?
+  org        Organization? @relation(fields: [orgId], references: [id])
+
+  /// 软删除：有值则不可登录，账号会被改写以释放唯一约束
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  roles      UserRole[]
+  plans      PurchasePlan[]
+  nonMaterialItems NonMaterialItem[] @relation("NonMaterialCreatedBy")
+
+  @@index([deletedAt])
+}
+
+model UserRole {
+  userId Int
+  roleId Int
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+  role Role @relation(fields: [roleId], references: [id])
+
+  @@id([userId, roleId])
+}
+
+model ProductType {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(255)
+  parentId  Int?
+  parent    ProductType? @relation("ProductTypeTree", fields: [parentId], references: [id])
+  children  ProductType[] @relation("ProductTypeTree")
+
+  status    RecordStatus @default(ACTIVE)
+  sort      Int       @default(0)
+  /// 软删除：有值表示已从管理端移除，历史业务数据仍保留外键
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  materialItems MaterialItem[]
+  nonMaterialItems NonMaterialItem[]
+  planLines PurchasePlanLine[]
+  aggregateLines PurchaseAggregateLine[]
+
+  @@index([parentId])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model MaterialCategory {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(255)
+  parentId  Int?
+  parent    MaterialCategory? @relation("MaterialCategoryTree", fields: [parentId], references: [id])
+  children  MaterialCategory[] @relation("MaterialCategoryTree")
+
+  status    RecordStatus @default(ACTIVE)
+  sort      Int       @default(0)
+  /// 软删除：有值表示已从管理端移除，历史业务数据仍保留外键
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  materialItems MaterialItem[]
+  nonMaterialItems NonMaterialItem[]
+  planLines PurchasePlanLine[]
+  aggregateLines PurchaseAggregateLine[]
+
+  @@index([parentId])
+  @@index([status])
+  @@index([deletedAt])
+}
+
+model MaterialItem {
+  id                 Int      @id @default(autoincrement())
+  productTypeId      Int
+  materialCategoryId Int
+
+  itemImage          String?  @db.MediumText
+  itemName           String   @db.VarChar(255)
+  brand              String?  @db.VarChar(255)
+  spec               String?  @db.VarChar(255)
+  unit               String?  @db.VarChar(32)
+
+  demandQty          Decimal? @db.Decimal(18, 2)
+  unitPrice          Decimal? @db.Decimal(18, 2)
+  subtotal           Decimal? @db.Decimal(18, 2)
+  total              Decimal? @db.Decimal(18, 2)
+
+  status             RecordStatus @default(ACTIVE)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  productType ProductType @relation(fields: [productTypeId], references: [id])
+  materialCategory MaterialCategory @relation(fields: [materialCategoryId], references: [id])
+
+  planLines PurchasePlanLine[]
+
+  @@index([productTypeId])
+  @@index([materialCategoryId])
+}
+
+model NonMaterialItem {
+  id                 Int      @id @default(autoincrement())
+  orgId              Int
+  createdByUserId    Int
+
+  sourcePlanId       Int?
+  sourcePlanLineId  Int? @unique
+
+  productTypeId      Int
+  materialCategoryId Int
+
+  itemName           String   @db.VarChar(255)
+  itemImage          String?  @db.MediumText
+  brand              String?  @db.VarChar(255)
+  spec               String?  @db.VarChar(255)
+  unit               String?  @db.VarChar(32)
+
+  demandQty          Decimal? @db.Decimal(18, 2)
+  unitPrice          Decimal? @db.Decimal(18, 2)
+  subtotal           Decimal? @db.Decimal(18, 2)
+  total              Decimal? @db.Decimal(18, 2)
+
+  adopted            Boolean  @default(false)
+  status             RecordStatus @default(ACTIVE)
+
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id])
+  createdBy User @relation("NonMaterialCreatedBy", fields: [createdByUserId], references: [id])
+
+  sourcePlan PurchasePlan? @relation(fields: [sourcePlanId], references: [id])
+
+  productType ProductType @relation(fields: [productTypeId], references: [id])
+  materialCategory MaterialCategory @relation(fields: [materialCategoryId], references: [id])
+
+  purchasePlanLine PurchasePlanLine? @relation("NonMaterialLink")
+}
+
+model PurchasePlan {
+  id            Int      @id @default(autoincrement())
+
+  // 格式建议：YYYY-MM，例如 2026-03
+  month         String   @db.VarChar(7)
+  orgId         Int
+  createdByUserId Int
+
+  status        PurchasePlanStatus @default(DRAFT)
+  planName      String?  @db.VarChar(255)
+  shippingAddress String? @db.VarChar(500)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id])
+  createdBy User @relation(fields: [createdByUserId], references: [id])
+
+  lines PurchasePlanLine[]
+  nonMaterialItems NonMaterialItem[]
+
+  @@index([month])
+  @@index([orgId])
+}
+
+model PurchasePlanLine {
+  id          Int      @id @default(autoincrement())
+  planId      Int
+  lineType    PurchaseLineType
+
+  // 为了后续“月度采购聚合”能直接统计，这里保留快照字段
+  productTypeId      Int?
+  materialCategoryId Int?
+
+  materialItemId     Int?
+  nonMaterialItemId  Int? @unique
+
+  itemName     String?  @db.VarChar(255)
+  itemImage    String?  @db.MediumText
+  brand        String?  @db.VarChar(255)
+  spec         String?  @db.VarChar(255)
+  unit         String?  @db.VarChar(32)
+
+  demandQty    Decimal? @db.Decimal(18, 2)
+  unitPrice    Decimal? @db.Decimal(18, 2)
+  subtotal     Decimal? @db.Decimal(18, 2)
+  total        Decimal? @db.Decimal(18, 2)
+
+  createdAt    DateTime @default(now())
+
+  plan PurchasePlan @relation(fields: [planId], references: [id])
+
+  productType ProductType? @relation(fields: [productTypeId], references: [id])
+  materialCategory MaterialCategory? @relation(fields: [materialCategoryId], references: [id])
+
+  materialItem MaterialItem? @relation(fields: [materialItemId], references: [id])
+  nonMaterial NonMaterialItem? @relation("NonMaterialLink", fields: [nonMaterialItemId], references: [id])
+
+  @@index([planId])
+}
+
+model PurchaseAggregate {
+  id        Int      @id @default(autoincrement())
+  month     String   @db.VarChar(7)
+  orgId     Int
+  sourcePlanId Int?
+  status    AggregateStatus @default(INIT)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org Organization @relation(fields: [orgId], references: [id])
+  lines PurchaseAggregateLine[]
+
+  @@index([month])
+  @@index([orgId])
+}
+
+model PurchaseAggregateLine {
+  id               Int      @id @default(autoincrement())
+  aggregateId      Int
+
+  // 用于“清单类型（图谱/非图谱）”筛选：来自 PurchasePlanLine.lineType
+  lineType         PurchaseLineType?
+
+  productTypeId    Int?
+  materialCategoryId Int?
+
+  unit             String?
+  demandQty        Decimal? @db.Decimal(18, 2)
+  unitPrice        Decimal? @db.Decimal(18, 2)
+  subtotal         Decimal? @db.Decimal(18, 2)
+  total            Decimal? @db.Decimal(18, 2)
+
+  createdAt        DateTime @default(now())
+
+  aggregate PurchaseAggregate @relation(fields: [aggregateId], references: [id])
+
+  productType ProductType? @relation(fields: [productTypeId], references: [id])
+  materialCategory MaterialCategory? @relation(fields: [materialCategoryId], references: [id])
+}
+
